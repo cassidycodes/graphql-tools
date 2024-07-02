@@ -8,11 +8,10 @@ import {
   GraphQLString,
   parse,
 } from 'graphql';
-import { MaybePromise } from '@graphql-tools/utils';
+import { createDeferred, MaybePromise } from '@graphql-tools/utils';
 import { expectJSON } from '../../__testUtils__/expectJSON.js';
 import { resolveOnNextTick } from '../../__testUtils__/resolveOnNextTick.js';
 import { execute } from '../execute.js';
-import { promiseWithResolvers } from '../promiseWithResolvers.js';
 import type {
   InitialIncrementalExecutionResult,
   SubsequentIncrementalExecutionResult,
@@ -1974,7 +1973,7 @@ describe('Execute: stream directive', () => {
     ]);
   });
   it('Returns payloads in correct order when parent deferred fragment resolves slower than stream', async () => {
-    const { promise: slowFieldPromise, resolve: resolveSlowField } = promiseWithResolvers();
+    const { promise: slowFieldPromise, resolve: resolveSlowField } = createDeferred();
     const document = parse(/* GraphQL */ `
       query {
         nestedObject {
@@ -2077,9 +2076,9 @@ describe('Execute: stream directive', () => {
     });
   });
   it('Can @defer fields that are resolved after async iterable is complete', async () => {
-    const { promise: slowFieldPromise, resolve: resolveSlowField } = promiseWithResolvers();
+    const { promise: slowFieldPromise, resolve: resolveSlowField } = createDeferred();
     const { promise: iterableCompletionPromise, resolve: resolveIterableCompletion } =
-      promiseWithResolvers();
+      createDeferred();
 
     const document = parse(/* GraphQL */ `
       query {
@@ -2187,9 +2186,9 @@ describe('Execute: stream directive', () => {
     });
   });
   it('Can @defer fields that are resolved before async iterable is complete', async () => {
-    const { promise: slowFieldPromise, resolve: resolveSlowField } = promiseWithResolvers();
+    const { promise: slowFieldPromise, resolve: resolveSlowField } = createDeferred();
     const { promise: iterableCompletionPromise, resolve: resolveIterableCompletion } =
-      promiseWithResolvers();
+      createDeferred();
 
     const document = parse(/* GraphQL */ `
       query {

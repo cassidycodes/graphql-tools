@@ -8,10 +8,10 @@ import {
   GraphQLString,
   parse,
 } from 'graphql';
+import { createDeferred } from '@graphql-tools/utils';
 import { expectJSON } from '../../__testUtils__/expectJSON.js';
 import { resolveOnNextTick } from '../../__testUtils__/resolveOnNextTick.js';
 import { execute } from '../execute.js';
-import { promiseWithResolvers } from '../promiseWithResolvers.js';
 import type {
   InitialIncrementalExecutionResult,
   SubsequentIncrementalExecutionResult,
@@ -875,7 +875,7 @@ describe('Execute: defer directive', () => {
       }
     `);
 
-    const { promise: slowFieldPromise, resolve: resolveSlowField } = promiseWithResolvers();
+    const { promise: slowFieldPromise, resolve: resolveSlowField } = createDeferred();
     let cResolverCalled = false;
     let eResolverCalled = false;
     const executeResult = execute({

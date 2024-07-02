@@ -1,8 +1,7 @@
 import type { GraphQLError } from 'graphql';
-import { isPromise } from '@graphql-tools/utils';
+import { createDeferred, isPromise } from '@graphql-tools/utils';
 import { BoxedPromiseOrValue } from './BoxedPromiseOrValue.js';
 import { invariant } from './invariant.js';
-import { promiseWithResolvers } from './promiseWithResolvers.js';
 import type {
   DeferredFragmentRecord,
   DeferredGroupedFieldSetRecord,
@@ -75,7 +74,7 @@ export class IncrementalGraph {
           });
         }
         const { promise, resolve } =
-          promiseWithResolvers<IteratorResult<Iterable<IncrementalDataRecordResult>>>();
+          createDeferred<IteratorResult<Iterable<IncrementalDataRecordResult>>>();
         this._nextQueue.push(resolve);
         return promise;
       },

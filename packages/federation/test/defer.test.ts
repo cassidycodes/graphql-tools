@@ -1,4 +1,3 @@
-import { exec } from 'child_process';
 import { inspect } from 'util';
 import { GraphQLSchema, parse, print } from 'graphql';
 import _ from 'lodash';

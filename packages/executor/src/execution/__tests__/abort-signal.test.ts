@@ -1,7 +1,6 @@
 import { parse } from 'graphql';
-import { createDeferred } from '@graphql-tools/delegate';
 import { makeExecutableSchema } from '@graphql-tools/schema';
-import { isAsyncIterable } from '@graphql-tools/utils';
+import { createDeferred, isAsyncIterable } from '@graphql-tools/utils';
 import { Repeater } from '@repeaterjs/repeater';
 import { assertAsyncIterable } from '../../../../loaders/url/tests/test-utils';
 import { normalizedExecutor } from '../normalizedExecutor';
@@ -456,7 +455,7 @@ describe('Abort Signal', () => {
     expect(bResolverGotInvoked).toBe(false);
   });
   it('stops pending stream execution for never-returning incremental delivery (@defer)', async () => {
-    const aResolverGotInvokedD = createDeferred();
+    const aResolverGotInvokedD = createDeferred<void>();
     const requestGotCancelledD = createDeferred();
     let bResolverGotInvoked = false;
 
