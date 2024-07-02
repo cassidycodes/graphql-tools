@@ -456,7 +456,7 @@ describe('Abort Signal', () => {
   });
   it('stops pending stream execution for never-returning incremental delivery (@defer)', async () => {
     const aResolverGotInvokedD = createDeferred<void>();
-    const requestGotCancelledD = createDeferred();
+    const requestGotCancelledD = createDeferred<void>();
     let bResolverGotInvoked = false;
 
     const schema = makeExecutableSchema({
