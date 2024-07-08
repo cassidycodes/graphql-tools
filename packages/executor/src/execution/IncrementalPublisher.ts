@@ -131,13 +131,12 @@ class IncrementalPublisher {
         completed: [],
       };
 
+      let currentCompletedIncrementalData =
+        this._incrementalGraph.currentCompletedIncrementalData();
       const completedIncrementalData = this._incrementalGraph.completedIncrementalData();
-      // use the raw iterator rather than 'for await ... of' so as not to trigger the
-      // '.return()' method on the iterator when exiting the loop with the next value
       const asyncIterator = completedIncrementalData[Symbol.asyncIterator]();
-      let iteration = await asyncIterator.next();
-      while (!iteration.done) {
-        for (const completedResult of iteration.value) {
+      do {
+        for (const completedResult of currentCompletedIncrementalData) {
           this._handleCompletedIncrementalData(completedResult, context);
         }
 
@@ -168,8 +167,9 @@ class IncrementalPublisher {
           return { value: subsequentIncrementalExecutionResult, done: false };
         }
 
-        iteration = await asyncIterator.next();
-      }
+        const iteration = await asyncIterator.next();
+        currentCompletedIncrementalData = iteration.value;
+      } while (currentCompletedIncrementalData !== undefined);
 
       if (this._context.signal?.aborted) {
         throw this._context.signal.reason;

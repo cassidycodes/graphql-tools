@@ -878,7 +878,7 @@ describe('Execute: stream directive', () => {
         }
       }
     `);
-    const result = await completeAsync(document, 3, {
+    const result = await completeAsync(document, 2, {
       async *friendList() {
         yield await Promise.resolve(friends[0]);
         yield await Promise.resolve(friends[1]);
@@ -908,12 +908,6 @@ describe('Execute: stream directive', () => {
               id: '0',
             },
           ],
-          hasNext: true,
-        },
-      },
-      {
-        done: false,
-        value: {
           completed: [{ id: '0' }],
           hasNext: false,
         },
@@ -1650,7 +1644,11 @@ describe('Execute: stream directive', () => {
             ],
           },
         ],
-        completed: [{ id: '0' }, { id: '1' }],
+        completed: [{ id: '0' }],
+        hasNext: true,
+      },
+      {
+        completed: [{ id: '1' }],
         hasNext: false,
       },
     ]);

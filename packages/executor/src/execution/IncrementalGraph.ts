@@ -60,6 +60,21 @@ export class IncrementalGraph {
     }
   }
 
+  currentCompletedIncrementalData() {
+    return {
+      [Symbol.iterator]() {
+        return this;
+      },
+      next: (): IteratorResult<IncrementalDataRecordResult> => {
+        const value = this._completedQueue.shift();
+        if (value !== undefined) {
+          return { value, done: false };
+        }
+        return { value: undefined, done: true };
+      },
+    };
+  }
+
   completedIncrementalData() {
     return {
       [Symbol.asyncIterator]() {
