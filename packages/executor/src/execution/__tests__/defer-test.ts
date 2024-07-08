@@ -134,12 +134,16 @@ async function complete(
   document: DocumentNode,
   rootValue: unknown = { hero },
   enableEarlyExecution = false,
+  useLatestFormat = true,
 ) {
   const result = await execute({
     schema,
     document,
     rootValue,
     enableEarlyExecution,
+    deduplicateDefers: useLatestFormat,
+    sendIncrementalErrorsAsNull: !useLatestFormat,
+    sendPathAndLabelOnIncremental: !useLatestFormat,
   });
 
   if ('initialResult' in result) {
@@ -1097,6 +1101,90 @@ describe('Execute: defer directive', () => {
     ]);
   });
 
+  it('Can duplicate fields present in the initial payload if specified, using branching executor format', async () => {
+    const document = parse(`
+      query {
+        hero {
+          nestedObject {
+            deeperObject {
+              foo
+            }
+          }
+          anotherNestedObject {
+            deeperObject {
+              foo
+            }
+          }
+          ... @defer {
+            nestedObject {
+              deeperObject {
+                bar
+              }
+            }
+            anotherNestedObject {
+              deeperObject {
+                foo
+              }
+            }
+          }
+        }
+      }
+    `);
+    const result = await complete(
+      document,
+      {
+        hero: {
+          nestedObject: { deeperObject: { foo: 'foo', bar: 'bar' } },
+          anotherNestedObject: { deeperObject: { foo: 'foo' } },
+        },
+      },
+      undefined,
+      false,
+    );
+    expectJSON(result).toDeepEqual([
+      {
+        data: {
+          hero: {
+            nestedObject: {
+              deeperObject: {
+                foo: 'foo',
+              },
+            },
+            anotherNestedObject: {
+              deeperObject: {
+                foo: 'foo',
+              },
+            },
+          },
+        },
+        pending: [{ id: '0', path: ['hero'] }],
+        hasNext: true,
+      },
+      {
+        incremental: [
+          {
+            data: {
+              nestedObject: {
+                deeperObject: {
+                  bar: 'bar',
+                },
+              },
+              anotherNestedObject: {
+                deeperObject: {
+                  foo: 'foo',
+                },
+              },
+            },
+            id: '0',
+            path: ['hero'],
+          },
+        ],
+        completed: [{ id: '0' }],
+        hasNext: false,
+      },
+    ]);
+  });
+
   it('Deduplicates fields present in a parent defer payload', async () => {
     const document = parse(`
       query {
@@ -1142,6 +1230,67 @@ describe('Execute: defer directive', () => {
               bar: 'bar',
             },
             id: '1',
+          },
+        ],
+        completed: [{ id: '0' }, { id: '1' }],
+        hasNext: false,
+      },
+    ]);
+  });
+
+  it('Can duplicate fields present in a parent defer payload if specified, using branching executor format', async () => {
+    const document = parse(`
+      query {
+        hero {
+          ... @defer {
+            nestedObject {
+              deeperObject {
+                foo
+                ... @defer {
+                  foo
+                  bar
+                }
+              }
+            }
+          }
+        }
+      }
+    `);
+    const result = await complete(
+      document,
+      {
+        hero: { nestedObject: { deeperObject: { foo: 'foo', bar: 'bar' } } },
+      },
+      undefined,
+      false,
+    );
+    expectJSON(result).toDeepEqual([
+      {
+        data: {
+          hero: {},
+        },
+        pending: [{ id: '0', path: ['hero'] }],
+        hasNext: true,
+      },
+      {
+        pending: [{ id: '1', path: ['hero', 'nestedObject', 'deeperObject'] }],
+        incremental: [
+          {
+            data: {
+              nestedObject: {
+                deeperObject: { foo: 'foo' },
+              },
+            },
+            id: '0',
+            path: ['hero'],
+          },
+          {
+            data: {
+              foo: 'foo',
+              bar: 'bar',
+            },
+            id: '1',
+            path: ['hero', 'nestedObject', 'deeperObject'],
           },
         ],
         completed: [{ id: '0' }, { id: '1' }],

@@ -1,5 +1,5 @@
 import type { GraphQLError } from 'graphql';
-import { pathToArray } from '@graphql-tools/utils';
+import { addPath, pathToArray } from '@graphql-tools/utils';
 import { IncrementalGraph } from './IncrementalGraph.js';
 import { invariant } from './invariant.js';
 import type {
@@ -36,6 +36,8 @@ export function buildIncrementalResponse<TData = any>(
 }
 
 interface IncrementalPublisherContext {
+  sendIncrementalErrorsAsNull: boolean;
+  sendPathAndLabelOnIncremental: boolean;
   signal: AbortSignal | undefined;
   cancellableStreams: Set<CancellableStreamRecord> | undefined;
 }
@@ -229,10 +231,27 @@ class IncrementalPublisher {
           continue;
         }
         invariant(id !== undefined);
-        context.completed.push({
-          id,
-          errors: deferredGroupedFieldSetResult.errors,
-        });
+        if (this._context.sendIncrementalErrorsAsNull) {
+          const incrementalEntry: IncrementalDeferResult = {
+            id,
+            data: null,
+            errors: deferredGroupedFieldSetResult.errors,
+          };
+          if (this._context.sendPathAndLabelOnIncremental) {
+            const { path, label } = deferredFragmentRecord;
+            incrementalEntry.path = pathToArray(path);
+            if (label !== undefined) {
+              incrementalEntry.label = label;
+            }
+          }
+          context.incremental.push(incrementalEntry);
+          context.completed.push({ id });
+        } else {
+          context.completed.push({
+            id,
+            errors: deferredGroupedFieldSetResult.errors,
+          });
+        }
       }
       return;
     }
@@ -262,6 +281,13 @@ class IncrementalPublisher {
           ...reconcilableResult.result,
           id: bestId,
         };
+        if (this._context.sendPathAndLabelOnIncremental) {
+          const { path, label } = deferredFragmentRecord;
+          incrementalEntry.path = pathToArray(path);
+          if (label !== undefined) {
+            incrementalEntry.label = label;
+          }
+        }
         if (subPath !== undefined) {
           incrementalEntry.subPath = subPath;
         }
@@ -279,10 +305,27 @@ class IncrementalPublisher {
     const id = streamRecord.id;
     invariant(id !== undefined);
     if (streamItemsResult.errors !== undefined) {
-      context.completed.push({
-        id,
-        errors: streamItemsResult.errors,
-      });
+      if (this._context.sendIncrementalErrorsAsNull) {
+        const incrementalEntry: IncrementalStreamResult = {
+          items: null,
+          id,
+          errors: streamItemsResult.errors,
+        };
+        if (this._context.sendPathAndLabelOnIncremental) {
+          const { path, label, index } = streamRecord;
+          incrementalEntry.path = pathToArray(addPath(path, index, undefined));
+          if (label !== undefined) {
+            incrementalEntry.label = label;
+          }
+        }
+        context.incremental.push(incrementalEntry);
+        context.completed.push({ id });
+      } else {
+        context.completed.push({
+          id,
+          errors: streamItemsResult.errors,
+        });
+      }
       this._incrementalGraph.removeStream(streamRecord);
       if (isCancellableStreamRecord(streamRecord)) {
         invariant(this._context.cancellableStreams !== undefined);
@@ -300,11 +343,19 @@ class IncrementalPublisher {
         this._context.cancellableStreams.delete(streamRecord);
       }
     } else {
+      const bareResult = streamItemsResult.result;
       const incrementalEntry: IncrementalStreamResult = {
         id,
-        ...streamItemsResult.result,
+        ...bareResult,
       };
-
+      if (this._context.sendPathAndLabelOnIncremental) {
+        const { path, label, index } = streamRecord;
+        incrementalEntry.path = pathToArray(addPath(path, index, undefined));
+        streamRecord.index += bareResult.items.length;
+        if (label !== undefined) {
+          incrementalEntry.label = label;
+        }
+      }
       context.incremental.push(incrementalEntry);
 
       const incrementalDataRecords = streamItemsResult.incrementalDataRecords;

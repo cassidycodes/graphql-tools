@@ -88,8 +88,12 @@ interface BareDeferredGroupedFieldSetResult<TData = Record<string, unknown>> {
 export interface IncrementalDeferResult<
   TData = Record<string, unknown>,
   TExtensions = Record<string, unknown>,
-> extends BareDeferredGroupedFieldSetResult<TData> {
+> {
+  errors?: ReadonlyArray<GraphQLError>;
+  data: TData | null;
   id: string;
+  path?: ReadonlyArray<string | number>;
+  label?: string;
   subPath?: ReadonlyArray<string | number>;
   extensions?: TExtensions;
 }
@@ -99,8 +103,10 @@ export interface FormattedIncrementalDeferResult<
   TExtensions = Record<string, unknown>,
 > {
   errors?: ReadonlyArray<GraphQLFormattedError>;
-  data: TData;
+  data: TData | null;
   id: string;
+  path?: ReadonlyArray<string | number>;
+  label?: string;
   subPath?: ReadonlyArray<string | number>;
   extensions?: TExtensions;
 }
@@ -113,9 +119,12 @@ interface BareStreamItemsResult<TData = ReadonlyArray<unknown>> {
 export interface IncrementalStreamResult<
   TData = ReadonlyArray<unknown>,
   TExtensions = Record<string, unknown>,
-> extends BareStreamItemsResult<TData> {
+> {
+  errors?: ReadonlyArray<GraphQLError>;
+  items: TData | null;
   id: string;
-  subPath?: ReadonlyArray<string | number>;
+  path?: ReadonlyArray<string | number>;
+  label?: string;
   extensions?: TExtensions;
 }
 
@@ -124,9 +133,10 @@ export interface FormattedIncrementalStreamResult<
   TExtensions = Record<string, unknown>,
 > {
   errors?: ReadonlyArray<GraphQLFormattedError>;
-  items: TData;
+  items: TData | null;
   id: string;
-  subPath?: ReadonlyArray<string | number>;
+  path?: ReadonlyArray<string | number>;
+  label?: string;
   extensions?: TExtensions;
 }
 
@@ -261,6 +271,7 @@ export type StreamItemRecord =
 export interface StreamRecord {
   path: Path;
   label: string | undefined;
+  index: number;
   id?: string | undefined;
   streamItemQueue: Array<StreamItemRecord>;
 }

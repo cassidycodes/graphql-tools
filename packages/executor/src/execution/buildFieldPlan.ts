@@ -1,4 +1,5 @@
-import type { DeferUsage, FieldGroup, GroupedFieldSet } from './collectFields.js';
+import { AccumulatorMap } from './AccumulatorMap.js';
+import type { DeferUsage, FieldDetails, FieldGroup, GroupedFieldSet } from './collectFields.js';
 import { getBySet } from './getBySet.js';
 import { isSameSet } from './isSameSet.js';
 
@@ -79,4 +80,36 @@ function getAncestors(deferUsage: DeferUsage): ReadonlyArray<DeferUsage> {
     parentDeferUsage = parentDeferUsage.parentDeferUsage;
   }
   return ancestors;
+}
+
+export function buildBranchingFieldPlan(
+  originalGroupedFieldSet: GroupedFieldSet,
+  parentDeferUsages: DeferUsageSet = new Set<DeferUsage>(),
+): FieldPlan {
+  const groupedFieldSet = new AccumulatorMap<string, FieldDetails>();
+
+  const newGroupedFieldSets = new Map<DeferUsageSet, AccumulatorMap<string, FieldDetails>>();
+
+  for (const [responseKey, fieldGroup] of originalGroupedFieldSet) {
+    for (const fieldDetails of fieldGroup) {
+      const deferUsage = fieldDetails.deferUsage;
+      const deferUsageSet =
+        deferUsage === undefined ? new Set<DeferUsage>() : new Set([deferUsage]);
+      if (isSameSet(parentDeferUsages, deferUsageSet)) {
+        groupedFieldSet.add(responseKey, fieldDetails);
+      } else {
+        let newGroupedFieldSet = getBySet(newGroupedFieldSets, deferUsageSet);
+        if (newGroupedFieldSet === undefined) {
+          newGroupedFieldSet = new AccumulatorMap();
+          newGroupedFieldSets.set(deferUsageSet, newGroupedFieldSet);
+        }
+        newGroupedFieldSet.add(responseKey, fieldDetails);
+      }
+    }
+  }
+
+  return {
+    groupedFieldSet,
+    newGroupedFieldSets,
+  };
 }

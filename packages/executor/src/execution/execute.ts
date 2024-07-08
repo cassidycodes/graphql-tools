@@ -51,7 +51,12 @@ import {
 } from '@graphql-tools/utils';
 import { TypedDocumentNode } from '@graphql-typed-document-node/core';
 import { BoxedPromiseOrValue } from './BoxedPromiseOrValue.js';
-import { buildFieldPlan, DeferUsageSet, FieldPlan } from './buildFieldPlan.js';
+import {
+  buildBranchingFieldPlan,
+  buildFieldPlan,
+  DeferUsageSet,
+  FieldPlan,
+} from './buildFieldPlan.js';
 import { coerceError } from './coerceError.js';
 import {
   collectSubfields as _collectSubfields,
@@ -137,6 +142,9 @@ export interface ExecutionContext<TVariables = any, TContext = any> {
   typeResolver: GraphQLTypeResolver<any, TContext>;
   subscribeFieldResolver: GraphQLFieldResolver<any, TContext>;
   enableEarlyExecution: boolean;
+  deduplicateDefers: boolean;
+  sendIncrementalErrorsAsNull: boolean;
+  sendPathAndLabelOnIncremental: boolean;
   errorWithIncrementalSubscription: boolean;
   signal: AbortSignal | undefined;
   errors: Map<Path | undefined, GraphQLError> | undefined;
@@ -161,6 +169,9 @@ export interface ExecutionArgs<TData = any, TVariables = any, TContext = any> {
   typeResolver?: Maybe<GraphQLTypeResolver<any, TContext>>;
   subscribeFieldResolver?: Maybe<GraphQLFieldResolver<any, TContext>>;
   enableEarlyExecution?: Maybe<boolean>;
+  deduplicateDefers?: Maybe<boolean>;
+  sendIncrementalErrorsAsNull?: Maybe<boolean>;
+  sendPathAndLabelOnIncremental?: Maybe<boolean>;
   errorWithIncrementalSubscription?: Maybe<boolean>;
   signal?: AbortSignal;
 }
@@ -363,6 +374,9 @@ export function buildExecutionContext<TData = any, TVariables = any, TContext = 
     typeResolver,
     subscribeFieldResolver,
     enableEarlyExecution,
+    deduplicateDefers,
+    sendIncrementalErrorsAsNull,
+    sendPathAndLabelOnIncremental,
     errorWithIncrementalSubscription,
     signal,
   } = args;
@@ -429,6 +443,9 @@ export function buildExecutionContext<TData = any, TVariables = any, TContext = 
     typeResolver: typeResolver ?? defaultTypeResolver,
     subscribeFieldResolver: subscribeFieldResolver ?? defaultFieldResolver,
     enableEarlyExecution: enableEarlyExecution !== false,
+    deduplicateDefers: deduplicateDefers !== false,
+    sendIncrementalErrorsAsNull: sendIncrementalErrorsAsNull === true,
+    sendPathAndLabelOnIncremental: sendPathAndLabelOnIncremental === true,
     errorWithIncrementalSubscription:
       operation.operation === 'subscription' && errorWithIncrementalSubscription !== false,
     signal,
@@ -466,6 +483,7 @@ function executeOperation<TData = any, TVariables = any, TContext = any>(
       fragments,
       variableValues,
       rootValue,
+      deduplicateDefers,
       errorWithIncrementalSubscription,
     } = exeContext;
     const rootType = getDefinedRootType(schema, operation.operation, [operation]);
@@ -496,7 +514,9 @@ function executeOperation<TData = any, TVariables = any, TContext = any>(
         undefined,
       );
     } else {
-      const fieldPLan = buildFieldPlan(groupedFieldSet);
+      const fieldPLan = deduplicateDefers
+        ? buildFieldPlan(groupedFieldSet)
+        : buildBranchingFieldPlan(groupedFieldSet);
       groupedFieldSet = fieldPLan.groupedFieldSet;
       const newGroupedFieldSets = fieldPLan.newGroupedFieldSets;
       const newDeferMap = addNewDeferredFragments(newDeferUsages, new Map());
@@ -1095,12 +1115,14 @@ async function completeAsyncIteratorValue(
         streamRecord = {
           label: streamUsage.label,
           path,
+          index,
           streamItemQueue,
         };
       } else {
         streamRecord = {
           label: streamUsage.label,
           path,
+          index,
           streamItemQueue,
           earlyReturn: returnFn.bind(asyncIterator),
         };
@@ -1247,6 +1269,7 @@ function completeIterableValue(
       const streamRecord: StreamRecord = {
         label: streamUsage.label,
         path,
+        index,
         streamItemQueue: buildSyncStreamItemQueue(
           item,
           index,
@@ -1649,7 +1672,11 @@ function collectAndExecuteSubfields(
       undefined,
     );
   }
-  const subFieldPlan = buildSubFieldPlan(groupedFieldSet, incrementalContext?.deferUsageSet);
+  const subFieldPlan = buildSubFieldPlan(
+    groupedFieldSet,
+    incrementalContext?.deferUsageSet,
+    exeContext.deduplicateDefers,
+  );
 
   groupedFieldSet = subFieldPlan.groupedFieldSet;
   const newGroupedFieldSets = subFieldPlan.newGroupedFieldSets;
@@ -1685,12 +1712,15 @@ function collectAndExecuteSubfields(
 function buildSubFieldPlan(
   originalGroupedFieldSet: GroupedFieldSet,
   deferUsageSet: DeferUsageSet | undefined,
+  deduplicateDefers: boolean,
 ): FieldPlan {
   let fieldPlan = (originalGroupedFieldSet as unknown as { _fieldPlan: FieldPlan })._fieldPlan;
   if (fieldPlan !== undefined) {
     return fieldPlan;
   }
-  fieldPlan = buildFieldPlan(originalGroupedFieldSet, deferUsageSet);
+  fieldPlan = deduplicateDefers
+    ? buildFieldPlan(originalGroupedFieldSet, deferUsageSet)
+    : buildBranchingFieldPlan(originalGroupedFieldSet, deferUsageSet);
   (originalGroupedFieldSet as unknown as { _fieldPlan: FieldPlan })._fieldPlan = fieldPlan;
   return fieldPlan;
 }
