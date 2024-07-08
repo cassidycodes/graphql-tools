@@ -81,12 +81,15 @@ async function complete(
   document: DocumentNode,
   rootValue: unknown = {},
   enableEarlyExecution = false,
+  useLatestFormat = true,
 ) {
   const result = await execute({
     schema,
     document,
     rootValue,
     enableEarlyExecution,
+    sendIncrementalErrorsAsNull: !useLatestFormat,
+    sendPathAndLabelOnIncremental: !useLatestFormat,
   });
 
   if ('initialResult' in result) {
@@ -139,6 +142,31 @@ describe('Execute: stream directive', () => {
       },
       {
         incremental: [{ items: ['banana', 'coconut'], id: '0' }],
+        completed: [{ id: '0' }],
+        hasNext: false,
+      },
+    ]);
+  });
+  it('Can stream a list field using branching executor format', async () => {
+    const document = parse('{ scalarList @stream(initialCount: 1) }');
+    const result = await complete(
+      document,
+      {
+        scalarList: () => ['apple', 'banana', 'coconut'],
+      },
+      undefined,
+      false,
+    );
+    expectJSON(result).toDeepEqual([
+      {
+        data: {
+          scalarList: ['apple'],
+        },
+        pending: [{ id: '0', path: ['scalarList'] }],
+        hasNext: true,
+      },
+      {
+        incremental: [{ items: ['banana', 'coconut'], id: '0', path: ['scalarList', 1] }],
         completed: [{ id: '0' }],
         hasNext: false,
       },
@@ -1016,6 +1044,51 @@ describe('Execute: stream directive', () => {
             ],
           },
         ],
+        hasNext: false,
+      },
+    ]);
+  });
+  it('Handles null returned in non-null list items after initialCount is reached, using branching executor format', async () => {
+    const document = parse(/* GraphQL */ `
+      query {
+        nonNullFriendList @stream(initialCount: 1) {
+          name
+        }
+      }
+    `);
+    const result = await complete(
+      document,
+      {
+        nonNullFriendList: () => [friends[0], null, friends[1]],
+      },
+      undefined,
+      false,
+    );
+
+    expectJSON(result).toDeepEqual([
+      {
+        data: {
+          nonNullFriendList: [{ name: 'Luke' }],
+        },
+        pending: [{ id: '0', path: ['nonNullFriendList'] }],
+        hasNext: true,
+      },
+      {
+        incremental: [
+          {
+            errors: [
+              {
+                message: 'Cannot return null for non-nullable field Query.nonNullFriendList.',
+                locations: [{ line: 3, column: 9 }],
+                path: ['nonNullFriendList', 1],
+              },
+            ],
+            items: null,
+            id: '0',
+            path: ['nonNullFriendList', 1],
+          },
+        ],
+        completed: [{ id: '0' }],
         hasNext: false,
       },
     ]);

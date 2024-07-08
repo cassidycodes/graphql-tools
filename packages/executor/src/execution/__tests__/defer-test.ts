@@ -1638,6 +1638,80 @@ describe('Execute: defer directive', () => {
     ]);
   });
 
+  it('Nulls do not cross defer boundaries, when using branching executor format', async () => {
+    const document = parse(`
+      query {
+        ... @defer {
+          a {
+            someField
+            b {
+              c {
+                nonNullErrorField
+              }
+            }
+          }
+        }
+        a {
+          ... @defer {
+            b {
+              c {
+                d
+              }
+            }
+          }
+        }
+      }
+    `);
+    const result = await complete(
+      document,
+      {
+        a: { b: { c: { d: 'd' } }, someField: 'someField' },
+      },
+      undefined,
+      false,
+    );
+    expectJSON(result).toDeepEqual([
+      {
+        data: {
+          a: {},
+        },
+        pending: [
+          { id: '0', path: ['a'] },
+          { id: '1', path: [] },
+        ],
+        hasNext: true,
+      },
+      {
+        incremental: [
+          {
+            data: { b: { c: { d: 'd' } } },
+            id: '0',
+            path: ['a'],
+          },
+          {
+            data: { a: { someField: 'someField', b: { c: null } } },
+            errors: [
+              {
+                message: 'Cannot return null for non-nullable field c.nonNullErrorField.',
+                locations: [{ line: 8, column: 17 }],
+                path: ['a', 'b', 'c', 'nonNullErrorField'],
+              },
+            ],
+            id: '1',
+            path: [],
+          },
+        ],
+        completed: [
+          {
+            id: '0',
+          },
+          { id: '1' },
+        ],
+        hasNext: false,
+      },
+    ]);
+  });
+
   it('Nulls cross defer boundaries, value first', async () => {
     const document = parse(`
       query {
