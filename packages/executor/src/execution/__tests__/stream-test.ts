@@ -10,6 +10,7 @@ import {
 } from 'graphql';
 import { createDeferred, MaybePromise } from '@graphql-tools/utils';
 import { expectJSON } from '../../__testUtils__/expectJSON.js';
+import { expectPromise } from '../../__testUtils__/expectPromise.js';
 import { resolveOnNextTick } from '../../__testUtils__/resolveOnNextTick.js';
 import { execute } from '../execute.js';
 import type {
@@ -1831,7 +1832,7 @@ describe('Execute: stream directive', () => {
     ]);
   });
 
-  it('Returns iterator and ignores errors when stream payloads are filtered', async () => {
+  it('Returns iterator and passes through errors when stream payloads are filtered', async () => {
     let returned = false;
     let requested = false;
     const iterable = {
@@ -1854,7 +1855,7 @@ describe('Execute: stream directive', () => {
         },
         return: () => {
           returned = true;
-          // Ignores errors from return.
+          // This error should be passed through.
           return Promise.reject(new Error('Oops'));
         },
       }),
@@ -1927,8 +1928,8 @@ describe('Execute: stream directive', () => {
       },
     });
 
-    const result3 = await iterator.next();
-    expectJSON(result3).toDeepEqual({ done: true, value: undefined });
+    const result3Promise = iterator.next();
+    await expectPromise(result3Promise).toRejectWith('Oops');
 
     expect(returned).toBeTruthy();
   });
@@ -2371,29 +2372,24 @@ describe('Execute: stream directive', () => {
   });
   it('Returns underlying async iterables when returned generator is returned', async () => {
     let returned = false;
-    let index = 0;
     const iterable = {
       [Symbol.asyncIterator]: () => ({
-        next: () => {
-          const friend = friends[index++];
-          if (friend == null) {
-            return Promise.resolve({ done: true, value: undefined });
-          }
-          return Promise.resolve({ done: false, value: friend });
-        },
+        next: () =>
+          new Promise(() => {
+            /* never resolves */
+          }),
         return: () => {
           returned = true;
+          // This error should be passed through.
+          return Promise.reject(new Error('Oops'));
         },
       }),
     };
 
     const document = parse(/* GraphQL */ `
       query {
-        friendList @stream(initialCount: 1) {
+        friendList @stream {
           id
-          ... @defer {
-            name
-          }
         }
       }
     `);
@@ -2412,26 +2408,21 @@ describe('Execute: stream directive', () => {
     const result1 = executeResult.initialResult;
     expectJSON(result1).toDeepEqual({
       data: {
-        friendList: [
-          {
-            id: '1',
-          },
-        ],
+        friendList: [],
       },
-      pending: [
-        { id: '0', path: ['friendList', 0] },
-        { id: '1', path: ['friendList'] },
-      ],
+      pending: [{ id: '0', path: ['friendList'] }],
       hasNext: true,
     });
+
+    const result2Promise = iterator.next();
     const returnPromise = iterator.return();
 
-    const result2 = await iterator.next();
+    const result2 = await result2Promise;
     expectJSON(result2).toDeepEqual({
       done: true,
       value: undefined,
     });
-    await returnPromise;
+    await expectPromise(returnPromise).toRejectWith('Oops');
     expect(returned).toBeTruthy();
   });
   it('Can return async iterable when underlying iterable does not have a return method', async () => {
@@ -2553,13 +2544,7 @@ describe('Execute: stream directive', () => {
       done: true,
       value: undefined,
     });
-    try {
-      await throwPromise; /* c8 ignore start */
-      // Not reachable, always throws
-      /* c8 ignore stop */
-    } catch (e) {
-      // ignore error
-    }
+    await expectPromise(throwPromise).toRejectWith('bad');
     expect(returned).toBeTruthy();
   });
 });

@@ -22,9 +22,7 @@ export class IncrementalGraph {
   private _rootNodes: Set<SubsequentResultRecord>;
 
   private _completedQueue: Array<IncrementalDataRecordResult>;
-  private _nextQueue: Array<
-    (iterable: IteratorResult<Iterable<IncrementalDataRecordResult>>) => void
-  >;
+  private _nextQueue: Array<(iterable: Iterable<IncrementalDataRecordResult> | undefined) => void>;
 
   constructor() {
     this._rootNodes = new Set();
@@ -60,46 +58,30 @@ export class IncrementalGraph {
     }
   }
 
-  currentCompletedIncrementalData() {
-    return {
-      [Symbol.iterator]() {
-        return this;
-      },
-      next: (): IteratorResult<IncrementalDataRecordResult> => {
-        const value = this._completedQueue.shift();
-        if (value !== undefined) {
-          return { value, done: false };
-        }
-        return { value: undefined, done: true };
-      },
-    };
+  *currentCompletedBatch(): Generator<IncrementalDataRecordResult> {
+    let completed;
+    while ((completed = this._completedQueue.shift()) !== undefined) {
+      yield completed;
+    }
+    if (this._rootNodes.size === 0) {
+      for (const resolve of this._nextQueue) {
+        resolve(undefined);
+      }
+    }
   }
 
-  completedIncrementalData() {
-    return {
-      [Symbol.asyncIterator]() {
-        return this;
-      },
-      next: (): Promise<IteratorResult<Iterable<IncrementalDataRecordResult>>> => {
-        const firstResult = this._completedQueue.shift();
-        if (firstResult !== undefined) {
-          return Promise.resolve({
-            value: this._yieldCurrentCompletedIncrementalData(firstResult),
-            done: false,
-          });
-        }
-        const { promise, resolve } =
-          createDeferred<IteratorResult<Iterable<IncrementalDataRecordResult>>>();
-        this._nextQueue.push(resolve);
-        return promise;
-      },
-      return: (): Promise<IteratorResult<Iterable<IncrementalDataRecordResult>>> => {
-        for (const resolve of this._nextQueue) {
-          resolve({ value: undefined, done: true });
-        }
-        return Promise.resolve({ value: undefined, done: true });
-      },
-    };
+  nextCompletedBatch(): Promise<Iterable<IncrementalDataRecordResult> | undefined> {
+    const { promise, resolve } = createDeferred<
+      Iterable<IncrementalDataRecordResult> | undefined
+    >();
+    this._nextQueue.push(resolve);
+    return promise;
+  }
+
+  abort(): void {
+    for (const resolve of this._nextQueue) {
+      resolve(undefined);
+    }
   }
 
   hasNext(): boolean {
@@ -144,11 +126,6 @@ export class IncrementalGraph {
 
   private _removePending(subsequentResultRecord: SubsequentResultRecord): void {
     this._rootNodes.delete(subsequentResultRecord);
-    if (this._rootNodes.size === 0) {
-      for (const resolve of this._nextQueue) {
-        resolve({ value: undefined, done: true });
-      }
-    }
   }
 
   private _addIncrementalDataRecords(
@@ -312,15 +289,17 @@ export class IncrementalGraph {
     while ((completed = this._completedQueue.shift()) !== undefined) {
       yield completed;
     }
+    if (this._rootNodes.size === 0) {
+      for (const resolve of this._nextQueue) {
+        resolve(undefined);
+      }
+    }
   }
 
   private _enqueue(completed: IncrementalDataRecordResult): void {
     const next = this._nextQueue.shift();
     if (next !== undefined) {
-      next({
-        value: this._yieldCurrentCompletedIncrementalData(completed),
-        done: false,
-      });
+      next(this._yieldCurrentCompletedIncrementalData(completed));
       return;
     }
     this._completedQueue.push(completed);
